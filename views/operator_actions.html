@@ -1,0 +1,25 @@
+{% extends "layout.html" %}{% block title %}Manage #{{conv.number}}{% endblock %}{% block main %}<div class="operator-management">
+<a href="/conversation/{{conv.id}}">← Conversation #{{conv.number}}</a>
+<h1>{{conv.subject}}</h1>
+{% if writes %}
+<section class="entry"><h2>Merge into another conversation</h2>
+<form class="stack" method="get"><label>Destination ticket number<input name="target" required inputmode="numeric" placeholder="Ticket number"></label><button>Review destination</button></form>
+{% if target %}<form class="stack" method="post"><input type="hidden" name="version" value="{{v}}"><input type="hidden" name="other_version" value="{{other}}"><input type="hidden" name="target" value="{{target.id}}">
+<p>Move the history of #{{conv.number}} into <a href="/conversation/{{target.id}}">#{{target.number}} {{target.subject}}</a>. Future replies from the destination use {{target.primaryCustomer.email}}.</p>
+<button name="action" value="merge">Merge #{{conv.number}} into #{{target.number}}</button></form>{% endif %}</section>
+<section class="entry"><h2>Change customer</h2><p>Future replies will use the new address. Previous messages keep their recorded participants.</p>
+<form class="stack" method="post"><input type="hidden" name="version" value="{{v}}"><label>Customer email<input name="email" type="email" value="{{conv.primaryCustomer.email}}" required></label><button name="action" value="customer">Change customer</button></form></section>
+<section class="entry"><h2>Customer profile</h2><p>{{conv.primaryCustomer.email}}</p><form class="stack" method="post">
+<input type="hidden" name="version" value="{{v}}"><input type="hidden" name="profile_version" value="{{profile_version}}">
+<label>First name<input name="firstName" value="{{profile.get('firstName',profile.get('first','')) or ''}}" maxlength="150"></label>
+<label>Last name<input name="lastName" value="{{profile.get('lastName',profile.get('last','')) or ''}}" maxlength="150"></label>
+<label>Organization<input name="organization" value="{{profile.organization or ''}}" maxlength="255"></label>
+<label>Job title<input name="jobTitle" value="{{profile.jobTitle or ''}}" maxlength="255"></label>
+<label>Background<textarea name="background" rows="4" maxlength="12000">{{profile.background or ''}}</textarea></label>
+<label>Additional verified email<input name="additional_email" type="email"></label><p>Linking an address lets incoming mail from it identify this customer.</p>
+<button name="action" value="profile">Save customer profile</button></form></section>
+{% if send and threads %}<section class="entry"><h2>Forward a message</h2><p>The recipient and their replies get a separate linked conversation.</p>
+<form class="stack" method="post"><input type="hidden" name="version" value="{{v}}"><label>Message to forward<select name="thread">{% for t in threads %}<option value="{{t.id}}">{{t.createdAt[:16]|replace('T',' ')}} UTC · {{t.type}} · {{(t.body or '')|striptags|truncate(70)}}</option>{% endfor %}</select></label>
+<label>To<input type="email" name="to" multiple required></label><label>Cc<input type="email" name="cc" multiple></label><label>Bcc<input type="email" name="bcc" multiple></label>
+<label>Your message<textarea rows="4" name="message"></textarea></label><label class="forward-files"><input type="checkbox" name="files" value="yes"> Include attachments from the selected message</label><button name="action" value="forward">Send forward</button></form></section>{% endif %}
+{% else %}<p>Editing opens when this mailbox accepts operator writes.</p>{% endif %}</div>{% endblock %}

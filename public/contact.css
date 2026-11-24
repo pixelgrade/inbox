@@ -1,0 +1,30 @@
+:root {
+  font: 16px/1.5 "Avenir Next", "Helvetica Neue", sans-serif;
+  color: #21252b; background: #fafafa;
+}
+* {box-sizing: border-box}
+body {margin: 0}
+header {display: flex; align-items: center; justify-content: space-between; padding: 14px clamp(20px, 6vw, 80px); background: #21252b}
+header a {color: #fff; padding-block: 5px}
+header a:first-child {font-size: 20px; font-weight: 750; text-decoration: none}
+main {max-width: 640px; margin: clamp(32px, 7vw, 80px) auto; padding: 0 22px}
+footer {margin-top: 2rem; font-size: .875rem}
+h1 {font-size: clamp(32px, 5vw, 44px); line-height: 1.12; letter-spacing: -.04em; margin: 0 0 32px}
+form {display: grid; gap: 20px}
+.pair {display: grid; grid-template-columns: 1fr 1.2fr; gap: 18px}
+label {display: block; font-weight: 650}
+span, small {color: #59616c; font-weight: 400}
+input:not([type=hidden]), textarea {display: block; width: 100%; margin: 6px 0 0; border: 1px solid #89929e; border-radius: 4px; color: inherit; background: white; padding: 10px 12px; font: inherit}
+textarea {resize: vertical; min-height: 108px}
+input:hover, textarea:hover {border-color: #315c9e}
+small {margin-top: -16px}
+button {justify-self: start; padding: 11px 24px; min-height: 46px; border: 0; border-radius: 4px; background: #315c9e; color: white; font-family: inherit; font-size: 1rem; font-weight: 650; cursor: pointer; transition: background .16s}
+button:hover {background: #254778}
+button:active {background: #1d365b}
+button:disabled {background: #535f70; cursor: progress}
+:focus-visible {outline: 3px solid #3c73bf; outline-offset: 3px}
+button:focus-visible, header a:focus-visible {outline-color: #70aaff}
+#problem {color: #962d24; margin: 0}
+a {color: #315c9e}
+@media (max-width: 520px) {.pair {grid-template-columns: 1fr; gap: 20px}}
+@media (prefers-reduced-motion: reduce) {* {transition: none}}

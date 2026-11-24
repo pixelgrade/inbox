@@ -1,0 +1,12 @@
+{% extends "layout.html" %}{% set section='triage' %}{% block title %}Intake checks{% endblock %}{% block keys %}{{key('u','queue')}}{% endblock %}{% block main %}
+<section class="insights"><a id="back" href="/">← Inbox</a><h1>Intake checks</h1>
+<p>Every new incoming email is checked before anything answers it: original mail headers, message shape and the sender's history. {% if mode=='act' %}Confident machine mail is filed closed, without an acknowledgment. A possible wrong address stays open with a tag.{% elif mode=='observe' %}Verdicts are recorded only. Nothing is filed until filing is switched on.{% else %}Checks are switched off.{% endif %}</p>
+<h2>Last 30 days</h2>
+<div class="tiles">{% for key in ['support','promotion','site_mail','bounce','auto_reply','wrong_address'] %}<a class="tile" href="/triage?category={{key}}" {% if key==category %}aria-current="page"{% endif %}><span>{{labels[key]}}</span><b>{{'{:,}'.format(counts.get(key,0))}}</b><small>{{(counts.get(key,0)/total*100)|round|int if total else 0}}% of checked mail</small></a>{% endfor %}</div>
+<p class="buckets"><span><b>{{'{:,}'.format(filed)}}</b> filed without a person</span><span><b>{{'{:,}'.format(total)}}</b> checked</span>{% if category %}<span><a href="/triage">Show all non-support verdicts</a></span>{% endif %}</p>
+<h2>{{labels[category] if category else 'Recent non-support verdicts'}}</h2>
+{% for row in rows %}<article class="entry"><div class="heading"><b>{{labels[row.category]}} · {{row.confidence}} confidence{% if row.filed %} · filed{% endif %}</b><time datetime="{{row.assessed}}">{{row.assessed[:16]|replace('T',' ')}} UTC</time></div>
+{% if row.conversation and row.number %}<p><a href="/conversation/{{row.conversation}}">#{{row.number}} · {{row.subject or '(no subject)'}}</a> <span class="chip state-{{row.status}}">{{row.status|title}}</span></p>{% else %}<p><small>Observed before handover. The message is in the current help desk, not in this mailbox.</small></p>{% endif %}
+{% if row.reasons %}<ul>{% for reason in row.reasons %}<li>{{reason}}</li>{% endfor %}</ul>{% endif %}
+<details><summary>Header evidence</summary><p class="activity">{{row.evidence.headers|join(' · ') or 'No sender-specific headers'}}{% if row.evidence.mailer %}<br>Mailer: {{row.evidence.mailer}}{% endif %}<br>{{row.evidence.links}} links · {{row.evidence.images}} images{% if row.evidence.product_words %} · product words: {{row.evidence.product_words|join(', ')}}{% endif %}</p></details></article>
+{% else %}<p>No verdicts recorded yet.</p>{% endfor %}</section>{% endblock %}

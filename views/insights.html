@@ -1,0 +1,80 @@
+{% extends "layout.html" %}{% set section='insights' %}{% block title %}Insights{% endblock %}
+{% macro trend(value) %}{% if value is not none %}<small class="trend">{{'+' if value>0 else ''}}{{value}}% vs the same span before</small>{% endif %}{% endmacro %}
+{% block main %}
+<section class="insights">
+<div class="insights-head"><h1>Insights</h1>
+<nav class="periods" aria-label="Period">{% for p in periods %}<a href="/insights?months={{p}}" {% if p==months %}aria-current="page"{% endif %}>{{p}} months</a>{% endfor %}</nav></div>
+<p class="eyebrow">From <time datetime="{{r.period.from}}">{{r.period.from[:10]}}</time> · computed <time datetime="{{r.generated}}" data-clock>{{r.generated[:16]|replace('T',' ')}} UTC</time> · <a href="/insights?months={{months}}&amp;refresh=1">Refresh</a></p>
+
+<h2>Right now</h2>
+<div class="tiles">
+<a class="tile" href="/?status=active"><span>Active</span><b>{{r.queue.active}}</b><small>{{r.queue.unassigned}} unassigned</small></a>
+<a class="tile" href="/review"><span>Drafts to review</span><b>{{r.queue.drafts}}</b><small>written, not sent</small></a>
+<a class="tile" href="/?status=pending"><span>Pending</span><b>{{r.queue.pending}}</b><small>waiting on the customer</small></a>
+{% if r.queue.oldest %}<a class="tile" href="/conversation/{{r.queue.oldest.id}}"><span>Longest wait</span><b>{{hours(r.queue.oldest.days*24)}}</b><small>#{{r.queue.oldest.number}} · {{r.queue.oldest.subject|truncate(38)}}</small></a>{% else %}<div class="tile"><span>Longest wait</span><b>–</b><small>nobody is waiting</small></div>{% endif %}
+</div>
+{% if r.queue.active %}<p class="buckets">{% for w in r.queue.waiting %}<span><b>{{w.count}}</b> {{w.label|lower}}</span>{% endfor %}</p>{% endif %}
+
+<h2>Last {{months}} months</h2>
+<div class="tiles">
+<div class="tile"><span>Support conversations</span><b>{{'{:,}'.format(r.volume.inbound)}}</b>{{trend(r.volume.inbound_change)}}<small>plus {{'{:,}'.format(r.volume.other)}} that were not support{% if r.volume.other_share is not none %} ({{r.volume.other_share}}% of incoming){% endif %}</small></div>
+<div class="tile"><span>First response, median</span><b>{{hours(r.response.median_hours)}}</b><small>9 in 10 within {{hours(r.response.p90_hours)}}</small></div>
+<div class="tile"><span>Answered within a day</span><b>{{r.response.within_day if r.response.within_day is not none else '–'}}{{'%' if r.response.within_day is not none else ''}}</b><small>of {{'{:,}'.format(r.response.answered)}} answered</small></div>
+<div class="tile"><span>Closed after one reply</span><b>{{r.response.one_reply_share if r.response.one_reply_share is not none else '–'}}{{'%' if r.response.one_reply_share is not none else ''}}</b><small>median time to close {{hours(r.response.median_resolution_hours)}}</small></div>
+</div>
+
+<div class="panel"><h3>Conversations per month</h3>
+<p class="legend"><span class="key s1"></span>Support from customers <span class="key s2"></span>Started by us <span class="key s5"></span>Not support (promotions, site mail, delivery failures)</p>
+<div class="chart"><svg viewBox="0 0 1000 200" role="img" aria-label="Conversations per month, by who started them">
+<line class="axis" x1="0" y1="170.5" x2="1000" y2="170.5"/>
+{% for b in c.stacked %}<g><title>{{b.month}}: {{b.data.inbound}} support, {{b.data.outbound}} started by us, {{b.data.other}} not support</title>
+{% for part in b.segments %}<rect class="{{part.slot}}" x="{{b.x}}" y="{{part.y}}" width="{{b.w}}" height="{{part.h}}" rx="3"/>{% endfor %}
+{% if months<=12 and b.total %}<text class="value" x="{{b.mid}}" y="{{b.top}}" text-anchor="middle">{{b.total}}</text>{% endif %}
+{% if months<=12 or loop.index0 % 2 == 0 %}<text class="tick" x="{{b.mid}}" y="190" text-anchor="middle">{{b.label}}</text>{% endif %}</g>{% endfor %}
+</svg></div>
+<details><summary>Show as a table</summary><table><thead><tr><th>Month</th><th>Support</th><th>Started by us</th><th>Not support</th><th>Median first response</th></tr></thead><tbody>{% for m in r.volume.months %}<tr><td>{{m.month}}</td><td>{{m.inbound}}</td><td>{{m.outbound}}</td><td>{{m.other}}</td><td>{{hours(m.first_response_hours)}}</td></tr>{% endfor %}</tbody></table></details></div>
+
+<div class="panel"><h3>Time to first response, median per month</h3>
+<div class="chart"><svg viewBox="0 0 1000 150" role="img" aria-label="Median time to first response per month">
+<line class="axis" x1="0" y1="110.5" x2="1000" y2="110.5"/>
+{% for b in c.speed %}<g><title>{{b.month}}: {{b.label}}</title>{% if b.h %}<rect class="s1" x="{{b.x}}" y="{{b.y}}" width="{{b.w}}" height="{{b.h}}" rx="3"/>{% endif %}
+{% if months<=12 and b.value %}<text class="value" x="{{b.mid}}" y="{{[b.y-6,10]|max}}" text-anchor="middle">{{b.label}}</text>{% endif %}
+{% if months<=12 or loop.index0 % 2 == 0 %}<text class="tick" x="{{b.mid}}" y="132" text-anchor="middle">{{b.month}}</text>{% endif %}</g>{% endfor %}
+</svg></div></div>
+
+<div class="split">
+<div class="panel"><h3>How replies were sent</h3>
+{% if c.segments %}<div class="chart tight"><svg viewBox="0 0 1000 28" role="img" aria-label="Sent replies by channel" preserveAspectRatio="none">{% for s in c.segments %}<rect class="s{{s.slot}}" x="{{s.x}}" y="0" width="{{s.w}}" height="28" rx="3"><title>{{s.label}}: {{s.count}} ({{s.share}}%)</title></rect>{% endfor %}</svg></div>
+<ul class="figures">{% for s in c.segments %}<li><span class="key s{{s.slot}}"></span>{{s.label}} <b>{{'{:,}'.format(s.count)}}</b> <small>{{s.share}}%</small></li>{% endfor %}</ul>{% else %}<p>No replies were sent in this period.</p>{% endif %}
+<p><small>{{'{:,}'.format(r.replies.workflow_actions)}} workflow actions ran. {{'{:,}'.format(r.response.closed_without_reply)}} support conversations were closed without a reply.</small></p></div>
+<div class="panel"><h3>Conversations we started</h3>
+<ul class="figures"><li>Sent <b>{{'{:,}'.format(r.outreach.sent)}}</b>{{trend(r.volume.outbound_change)}}</li><li>Opened <b>{{'{:,}'.format(r.outreach.opened)}}</b> <small>{{r.outreach.open_share if r.outreach.open_share is not none else '–'}}%</small></li><li>Answered by the customer <b>{{'{:,}'.format(r.outreach.replied)}}</b> <small>{{r.outreach.reply_share if r.outreach.reply_share is not none else '–'}}%</small></li></ul>
+<p><small>Opens count messages whose tracking image loaded; mail apps that block images are missed.</small></p></div>
+</div>
+
+<div class="split">
+<div class="panel"><h3>Topics</h3>
+{% if c.topics %}<table class="topics"><thead><tr><th>Tag</th><th>Conversations</th><th>Before</th></tr></thead><tbody>{% for t in c.topics %}<tr><td><a href="/?status=all&amp;q=tag:%22{{t.tag|urlencode}}%22">{{t.tag}}</a></td><td><svg viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true"><rect class="s1" x="0" y="0" width="{{t.width}}" height="8" rx="2"/></svg><b>{{t.count}}</b></td><td>{{t.before}}</td></tr>{% endfor %}</tbody></table>
+{% if r.rising %}<p><small>Growing fastest: {% for t in r.rising %}{{t.tag}} (+{{t.count - t.before}}){{', ' if not loop.last else ''}}{% endfor %}</small></p>{% endif %}{% else %}<p>No tagged conversations in this period.</p>{% endif %}</div>
+<div class="panel"><h3>Customers</h3>
+<ul class="figures"><li>People who wrote in <b>{{'{:,}'.format(r.customers.total)}}</b></li><li>First-time <b>{{'{:,}'.format(r.customers.new)}}</b></li><li>Returning <b>{{'{:,}'.format(r.customers.returning)}}</b></li></ul>
+{% if r.customers.repeat %}<p class="eyebrow">Wrote three times or more</p><ul class="past">{% for p in r.customers.repeat %}<li><a href="/?status=all&amp;q=customerIds:{{p.id}}">{{p.name}}</a><small>{{p.count}} conversations</small></li>{% endfor %}</ul>{% endif %}
+<h3>Ratings</h3>
+{% if r.ratings.total %}<ul class="figures"><li>Great <b>{{r.ratings.great}}</b> <small>{{r.ratings.great_share}}%</small></li><li>Okay <b>{{r.ratings.okay}}</b></li><li>Not good <b>{{r.ratings.bad}}</b></li></ul>
+{% for u in r.ratings.unhappy %}<p class="unhappy"><a href="/conversation/{{u.id}}#thread-{{u.thread}}">#{{u.number}} · {{u.subject|truncate(60)}}</a>{% if u.comment %}<br><small>“{{u.comment}}”</small>{% endif %}</p>{% endfor %}{% else %}<p>No ratings in this period.</p>{% endif %}</div>
+</div>
+
+<div class="panel"><h3>When support requests arrive</h3>
+<div class="chart"><svg viewBox="0 0 1000 250" role="img" aria-label="Customer conversations by weekday and hour, {{r.rhythm.zone}}">
+{% for row in c.heat %}{% set day=loop.index0 %}<text class="tick" x="0" y="{{day*30+26}}">{{weekdays[day]}}</text>
+{% for cell in row %}<rect class="heat-{{cell.shade}}" x="{{48+loop.index0*39.5}}" y="{{day*30+8}}" width="37.5" height="26" rx="3"><title>{{weekdays[day]}} {{'%02d'|format(loop.index0)}}:00 {{r.rhythm.zone}}: {{cell.count}}</title></rect>{% endfor %}{% endfor %}
+{% for hour in range(0,24,3) %}<text class="tick" x="{{48+hour*39.5}}" y="238">{{'%02d'|format(hour)}}:00</text>{% endfor %}
+</svg></div><p><small>Hours are in {{r.rhythm.zone}}. Darker cells received more conversations; the busiest held {{r.rhythm.peak}}.</small></p></div>
+
+<div class="panel"><h3>Every month on record</h3>
+<div class="chart"><svg viewBox="0 0 1000 150" role="img" aria-label="New conversations per month since the first one">
+<line class="axis" x1="0" y1="120.5" x2="1000" y2="120.5"/>
+{% for b in c.past %}<rect class="s1" x="{{b.x}}" y="{{b.y}}" width="{{b.w}}" height="{{b.h}}"><title>{{r.history[loop.index0].month}}: {{b.value}}</title></rect>{% endfor %}
+{% for y in c.years %}<text class="tick" x="{{y.x}}" y="140">{{y.label}}</text>{% endfor %}
+</svg></div></div>
+</section>{% endblock %}

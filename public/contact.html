@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex"><title>Contact support · {{company_name}}</title>
+  <link rel="stylesheet" href="/contact/contact.css"><script defer src="/contact/contact.js"></script>
+</head>
+<body>
+<header><a href="{{company_home}}">{{company_name}}</a><a href="{{company_docs}}">Documentation</a></header>
+<main>
+{% if offline %}
+  <h1>Contact support</h1>
+  <p>Email <!--email_off--><a href="mailto:{{support_address}}">{{support_address}}</a><!--/email_off--> with your question.</p>
+{% elif number %}
+  <h1>Message received</h1>
+  <p>Your support request is #{{ number }}. We’ll reply by email.</p>
+{% else %}
+  <h1>Contact support</h1>
+  <form action="/contact" method="post" enctype="multipart/form-data">
+    <input type="hidden" name="token" value="{{ token }}">
+    <div class="pair">
+      <label>Your name <span>(optional)</span><input name="name" autocomplete="name" maxlength="120"></label>
+      <label>Email address<input name="email" autocomplete="email" type="email" maxlength="254" required></label>
+    </div>
+    <label>Subject<input name="subject" maxlength="200" required></label>
+    <label>How can we help?<textarea name="message" rows="6" maxlength="30000" required></textarea></label>
+    <label>Attachments <span>(optional)</span>
+      <input name="attachment" type="file" multiple aria-describedby="file-help">
+    </label>
+    <small id="file-help">Up to 4 files, 8 MB each and 12 MB total.</small>
+    <p role="alert" id="problem" hidden></p>
+    <button type="submit">Send message</button>
+  </form>
+{% endif %}
+  <footer><a href="{{source_url}}">Source code</a></footer>
+</main>
+</body></html>

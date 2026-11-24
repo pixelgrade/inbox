@@ -1,0 +1,51 @@
+{% if requested %}
+<section class="agent-result" aria-label="Last draft request">
+  <a href="/investigations/{{requested.product}}/{{requested.id}}">Draft request</a>
+  {% if requested.state == 'proposed' %}
+    <strong>Proposal ready</strong><div class="proposal-text">{{requested.proposal}}</div>
+    {% if requested.ticket_version == v %}<form method="post" action="/investigations/{{requested.product}}/{{requested.id}}">
+      <input type="hidden" name="next" value="ticket"><button name="action" value="draft">Use this proposal as draft</button>
+    </form>{% else %}<p>The conversation has changed since this proposal was requested.</p>{% endif %}
+  {% elif requested.state == 'draft_saved' %} · Saved to drafts
+  {% else %} · {{ {'failed':'Agent run failed','needs_review':'Needs review','queued':'Queued','running':'In progress'}.get(requested.assignment, requested.assignment|title) }}{% endif %}
+</section>
+{% endif %}
+{% macro editor(id, caption, placeholder, key, limit) %}
+<div class="write-panel" data-editor>
+  <div class="write-bar"><label for="{{id}}">{{caption}}</label><button type="button" data-preview hidden aria-controls="{{id}}-preview" aria-pressed="false">Preview</button></div>
+  <textarea id="{{id}}" name="body" rows="3" maxlength="{{limit}}" placeholder="{{placeholder}}" data-keep="{{key}}-{{conv.id}}" required></textarea>
+  <div id="{{id}}-preview" class="text-preview" hidden></div>
+</div>
+{% endmacro %}
+{% macro attachments(id) %}
+<div class="attachment-strip"><label for="{{id}}">Attach files</label><input id="{{id}}" type="file" name="files" multiple><span aria-live="polite"></span></div>
+{% endmacro %}
+<section class="ticket-composer" aria-label="Private notes and customer replies">
+<form enctype="multipart/form-data" method="post" action="/conversation/{{conv.id}}/edit">
+  <input type="hidden" name="version" value="{{v}}">
+  <input type="hidden" name="composer" value="ticket">
+  {{editor('instruction', 'Private note', 'What should the agent know or change?', 'instruction', 8000)}}
+  {{attachments('note-files')}}
+  {% if draft %}<input type="hidden" name="thread" value="{{draft.id}}">{% endif %}
+  <div class="composer-footer">
+    {% if agents|length > 1 %}<label>Product <select name="product">{% for a in agents %}<option value="{{a.id}}">{{a.product}} · {{a.agent}}</option>{% endfor %}</select></label>
+    {% elif agents %}<input type="hidden" name="product" value="{{agents[0].id}}"><small>{{agents[0].agent}}</small>
+    {% else %}<small>Agent offline</small>{% endif %}
+    <div class="actions"><button name="action" value="note">Save note</button>
+    <button class="primary" name="action" value="request-draft" {% if not agents %}disabled{% endif %}>{{'Request changes' if draft else 'Request draft'}}</button></div>
+  </div>
+</form>
+<details class="manual-reply" id="manual-reply"><summary>Reply to customer</summary>
+<form enctype="multipart/form-data" action="/conversation/{{conv.id}}/edit" method="post">
+  <input type="hidden" name="version" value="{{v}}">
+  <input type="hidden" name="composer" value="ticket">
+  <p class="recipient">To · {{conv.primaryCustomer.email}}</p>
+  {{editor('body', 'Customer reply', 'Write your reply…', 'customer-reply', 1000000)}}
+  <details class="delivery-options"><summary>Delivery options</summary><div class="delivery-grid">
+    <label>Cc<input name="cc" type="email" multiple></label><label>Bcc<input name="bcc" type="email" multiple></label>
+    <label>Status after sending<select name="reply_status"><option value="">Inbox default</option>{% for s in ['active','pending','closed'] %}<option value="{{s}}">{{s|title}}</option>{% endfor %}</select></label>
+  </div></details>
+  {{attachments('reply-files')}}
+  <div class="composer-footer">
+  <div class="actions"><button name="action" value="draft">Save draft</button>{% if send %}<button class="primary" name="action" value="reply">Send reply</button>{% endif %}</div></div>
+</form></details></section>

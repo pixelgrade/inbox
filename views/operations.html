@@ -1,0 +1,13 @@
+{% extends "layout.html" %}{% block title %}Delivery issues{% endblock %}
+{% block main %}
+<a href="/">← Inbox</a><h1>Delivery issues</h1>
+{% for item in issues %}
+<article class="entry">
+  <strong>{{item.kind}}</strong><p>{{item.state|replace('_',' ')|capitalize}}</p>
+  {% if item.cid %}<p><a href="/conversation/{{item.cid}}">Open conversation</a></p>{% endif %}
+  <small>Receipt {{item.reference}}</small>
+</article>
+{% else %}<p>No deliveries need review.</p>{% endfor %}
+{% if deferred %}<h2>Handover acknowledgments</h2><p>These senders may have received an acknowledgment from the previous provider within the past 24 hours. The inbox will recheck each conversation after that window.</p>
+{% for item in deferred %}<p><a href="/conversation/{{item.cid}}">Open conversation {{item.cid}}</a> · Recheck after {{item.until}}</p>{% endfor %}{% endif %}
+{% endblock %}

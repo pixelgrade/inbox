@@ -1,0 +1,9 @@
+__pycache__/
+.pytest_cache/
+.venv/
+*.db
+*.db-*
+*.env
+desk-shots/
+DESK-HANDOFF.md
+private/

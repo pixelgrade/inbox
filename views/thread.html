@@ -1,0 +1,135 @@
+{% extends "layout.html" %}{% set section='inbox' %}
+{% set address=conv.primaryCustomer.email %}
+{% set customer=[conv.primaryCustomer.first, conv.primaryCustomer.last]|select|join(' ') %}
+{% set labels=(conv.tags or [])|map(attribute='tag')|join(', ') %}
+{% block title %}{{conv.subject}}{% endblock %}{% block frame %}desk{% endblock %}
+{% block keys %}
+  {% if draft and writes %}{% if send %}{{key('a','send draft')}}{% endif %}{{key('e','edit')}}{% endif %}
+  {% if writes %}{{key('r','reply')}}{{key('n','note')}}{{key('l','labels')}}{{key('s','snooze')}}{% endif %}{{key('u','queue')}}
+{% endblock %}
+{% macro version() %}<input type="hidden" name="version" value="{{v}}">{% endmacro %}
+{% macro stamp(when) %}{% if when %}<time datetime="{{when}}">{{when[:16]|replace('T',' ')}} UTC</time>{% endif %}{% endmacro %}
+{% macro draft_fields(t) %}{{version()}}<input type="hidden" name="thread" value="{{t.id}}">{% endmacro %}
+{% macro start_form() %}<form method="post" action="/conversation/{{conv.id}}/edit">{{version()}}{% endmacro %}
+{% macro draft_actions(t) %}
+<div class="draft-actions">
+  <p class="draft-dirty" role="status" hidden>Save your changes before sending this draft.</p>
+  {% if send %}<form method="post" action="/conversation/{{conv.id}}/edit">{{draft_fields(t)}}
+    <button class="primary" name="action" value="send-draft" data-confirm="Send this draft to {{t.recipients.to or address}}?" {% if t.id==draft.id %}data-send-key{% endif %}>Send reply{% if t.id==draft.id %} <kbd>a</kbd>{% endif %}</button>
+  </form>{% endif %}
+  <details class="draft-editor"{% if t.id==draft.id %} data-edit-key{% endif %}><summary>Edit draft</summary>
+    {% if t.draft_text is not none %}
+    <form method="post" action="/conversation/{{conv.id}}/edit">{{draft_fields(t)}}
+      <label>Draft reply<textarea name="draft_text" rows="7" required>{{t.draft_text}}</textarea></label>
+      <button name="action" value="edit-draft">Save changes</button></form>
+    {% elif t.draft_rich is not none %}
+    <form method="post" action="/conversation/{{conv.id}}/edit" data-rich-editor hidden>{{draft_fields(t)}}
+      <div class="rich-draft body" contenteditable="true" role="textbox" aria-label="Draft reply" aria-multiline="true">{{t.draft_rich}}</div>
+      <input type="hidden" name="draft_rich"><button name="action" value="edit-draft">Save changes</button>
+    </form>
+    {% endif %}
+    {% if t.draft_text is not none or t.draft_rich is not none %}<details><summary>Edit source HTML</summary>{% endif %}
+    <form method="post" action="/conversation/{{conv.id}}/edit">{{draft_fields(t)}}
+      <label>Source HTML<textarea name="draft_body" rows="7" required>{{t.body}}</textarea></label>
+      <button name="action" value="edit-draft">Save source</button></form>
+    {% if t.draft_text is not none or t.draft_rich is not none %}</details>{% endif %}
+  </details>
+  {% if agents and t.id==draft.id %}<a class="button" href="#instruction">Request changes</a>{% endif %}
+  <form method="post" action="/conversation/{{conv.id}}/edit">{{draft_fields(t)}}
+    <button name="action" value="discard-draft" data-confirm="Discard this draft?">Discard</button>
+  </form>
+</div>{% endmacro %}
+{% block main %}
+<div class="thread-head">
+  <a id="back" href="/">← Queue</a><h1>{{conv.subject or '(no subject)'}}</h1>
+  <div class="ticket-meta"><span class="status kind-{{conv.status}}">{{icon(conv.status)}}{{conv.status|title}}</span><span class="number">#{{conv.number}}</span><span>{{customer or address}}</span></div>
+</div>
+<p class="notice changed" id="changed" data-conversation="{{conv.id}}" data-version="{{v}}" data-request-state="{{requested.state if requested else ''}}" role="status" hidden>This conversation changed while you were reading. <a href="/conversation/{{conv.id}}">Load the latest version</a></p>
+{% if ledger %}<div class="agents state-strip" aria-label="Agents on this conversation"><p class="chips">{% for text, kind in ledger.chips %}<span class="chip {{kind}}">{{text}}</span>{% endfor %}</p>
+{% for r in ledger.state.requests %}<form class="ask" method="post" action="/conversation/{{conv.id}}/edit"><input type="hidden" name="version" value="{{v}}"><input type="hidden" name="event" value="{{r.id}}"><p><b>Needs you</b> · {{r.action or r.title}}</p>{% if writes %}<button name="action" value="event-done">Mark done</button>{% endif %}</form>{% endfor %}
+{% for b in ledger.state.scheduled %}<form class="ask" method="post" action="/conversation/{{conv.id}}/edit"><input type="hidden" name="version" value="{{v}}"><input type="hidden" name="event" value="{{b.id}}"><p><b>Booked send</b> · {{b.what}} goes out at {{b.clock}} ({{b.zone}}), {{b.day}}, unless you stop it.</p>{% if writes %}<button name="action" value="hold-send" data-confirm="Stop this send?">Stop this send</button>{% endif %}</form>{% endfor %}</div>{% endif %}
+<div class="thread-grid ticket-grid">
+<section class="feed" aria-label="Conversation history"{% if landing %} data-landing="thread-{{landing}}"{% endif %}>
+{% for t in threads %}
+  <div class="feed-item actor-{{t.actor}}">
+    <span class="avatar {{t.actor}}" aria-hidden="true">{{t.initials if t.actor!='rule' else ''}}</span>
+    {% if t.card %}{% set e=t.card %}<details class="event kind-{{e.kind}}{{' open-item' if e.waiting else ''}}" id="{{'thread-' ~ t.id if t.id else 'event-' ~ e.id}}"><summary><span class="line"><b class="who">{{e.who}}</b><span class="what">{{e.title}}</span>{% if e.status_name %}<span class="chip {{'warn' if e.waiting else ''}}">{{e.status_name}}</span>{% endif %}<time datetime="{{e.at}}">{{e.at[:16]|replace('T',' ')}} UTC</time></span>{% if e.lead %}<span class="lead">{{e.lead}}</span>{% endif %}</summary>
+{% if e.facts %}<dl>{% for label, value in e.facts %}<dt>{{label}}</dt><dd>{{value}}</dd>{% endfor %}</dl>{% endif %}
+{% if t.id %}<details class="original"><summary>The note as written{% if (t.createdBy or {}).first %} · {{t.createdBy.first}}{% endif %}</summary><div class="body">{{t.safe_body}}</div></details>{% for a in t.files or [] %}<a class="file" href="/attachment/{{conv.id}}/{{a.id}}">{{a.filename or a.fileName or 'Download attachment'}}</a>{% endfor %}{% if t.linkedConversationId %}<a href="/conversation/{{t.linkedConversationId}}">Linked conversation</a>{% endif %}{% elif e.text and not e.facts %}<p class="body">{{e.text}}</p>{% endif %}</details>{% elif t.type=='lineitem' %}
+    <p class="activity" id="thread-{{t.id}}"><span>{{(t.action or {}).text or (t.action or {}).type or 'Activity'}}</span>{{stamp(t.createdAt)}}</p>
+    {% elif t.type=='intake' %}
+    <div class="intake-event"><div class="activity"><span><b>Intake check</b> · {{ {'promotion':'promotion','support':'support','site_mail':'website-generated mail','bounce':'delivery failure','auto_reply':'automatic reply','wrong_address':'possibly meant for another business'}.get(intake.category,intake.category) }} · {{intake.confidence}} confidence{% if intake.filed %} · filed{% endif %}</span>{{stamp(t.createdAt)}}</div>
+    {% if intake.reasons %}<details><summary>Intake evidence</summary><ul>{% for reason in intake.reasons %}<li>{{reason}}</li>{% endfor %}</ul></details>{% endif %}
+    {% if intake.category=='wrong_address' and wrong_rule and writes and send %}{{start_form()}}<input type="hidden" name="rule" value="{{wrong_rule}}"><button name="action" value="workflow" data-confirm="Send the wrong-address reply and close this conversation?">Send the wrong-address reply and close</button></form>{% endif %}</div>
+    {% else %}
+    {% set decision=held if held and t.id==held.draft_id else none %}
+    <article class="entry {{'note' if t.type=='note'}} {{'unsent' if t.state=='draft'}}" id="thread-{{t.id}}">
+      {% if decision %}<header class="held-heading"><b>{{decision.who}} held this reply for you</b>{% if decision.data.confidence is number %}<span>{{decision.data.confidence}}/10</span>{% endif %}</header>{% endif %}
+      <div class="heading"><b>{{t.author}}</b><span>{{t.display}}{{' · private' if t.type=='note'}}</span>{{stamp(t.createdAt)}}</div>
+      {% if t.state=='draft' %}<p class="recipient">To · {{t.recipients.to or address}}</p>{% endif %}
+      {% if t.linkedConversationId %}<a href="/conversation/{{t.linkedConversationId}}">Linked conversation</a>{% endif %}
+      <div class="body">{{t.safe_body}}</div>
+      {% for a in t.files %}
+        <a class="file" href="/attachment/{{conv.id}}/{{a.id}}">
+          {% if a.previewable %}<img loading="lazy" src="/attachment/{{conv.id}}/{{a.id}}?image=1" alt="">{% endif %}
+          <span>{{a.filename or a.fileName or 'Download attachment'}}{% if a.size %}<small>{{a.size|filesizeformat}}</small>{% endif %}</span></a>
+      {% endfor %}
+      {% if t.rating and t.rating.rating %}<p><strong>Customer rating · {{t.rating.rating|title}}</strong>{% if t.rating.comments %}<br>{{t.rating.comments}}{% endif %}</p>{% endif %}
+      {% if t.action %}<p>{{t.action.text or t.action.type}}</p>{% endif %}
+      {% if t.recipients or t.openedAt %}<details class="envelope"><summary>Message details</summary>{% for field, value in t.recipients.items() %}<p>{{field|capitalize}} · {{value}}</p>{% endfor %}{% if t.openedAt %}<p>First opened {{stamp(t.openedAt)}}</p>{% endif %}</details>{% endif %}
+      {% if decision and decision.facts %}<dl class="held-facts">{% for label,value in decision.facts %}<dt>{{label}}</dt><dd>{{value}}</dd>{% endfor %}</dl>{% endif %}
+      {% if writes and t.state=='draft' and t.type=='message' %}{{draft_actions(t)}}{% endif %}
+    </article>
+    {% endif %}
+  </div>
+{% endfor %}
+{% if writes %}<div class="feed-item"><span class="avatar operator" aria-hidden="true">{{agent_name[:1]}}</span><div>{% include "ticket_composer.html" %}</div></div>{% endif %}
+</section>
+<aside class="ticket-side" aria-label="Conversation details">
+  <section><h2>Customer</h2>
+    <div class="customer-id"><span class="avatar customer" aria-hidden="true">{{(conv.primaryCustomer.first or address)[:1]|upper}}{{conv.primaryCustomer.last[:1]|upper if conv.primaryCustomer.last}}</span>
+      <div><strong>{{customer or address}}</strong>{% if customer %}<p>{{address}}</p>{% endif %}</div>
+    </div>
+  </section>
+  <section><h2>Earlier conversations</h2>{% if past.recent %}<ul class="past">{% for h in past.recent %}<li><a href="/conversation/{{h.id}}">{{h.subject|truncate(60)}}</a><small>{{h.status|title}} · {{stamp(h.created)}}</small></li>{% endfor %}</ul>{% if past.conversations > past.recent|length %}<a href="/?status=all&amp;q=customerIds:{{conv.primaryCustomer.id}}">All conversations with this customer</a>{% endif %}{% else %}<p>First conversation with this customer.</p>{% endif %}</section>
+  <section><details id="similar" data-id="{{conv.id}}"><summary>Similar answered conversations</summary><p role="status"></p><ul class="past"></ul></details>
+    <a href="/investigations?cid={{conv.id}}">Investigate this case</a></section>
+  <section><h2>Labels</h2>
+    {% if writes %}<details class="label-editor"><summary aria-label="Edit labels">
+    {% endif %}<span class="label-chips">{% for tag in conv.tags or [] %}<span class="chip">{{tag.tag}}</span>{% else %}No labels{% endfor %}</span>
+    {% if writes %}{{icon('draft')}}</summary>
+      <form class="field" method="post" action="/conversation/{{conv.id}}/edit">{{version()}}
+        <input type="hidden" name="action" value="tags"><label for="tags">Comma-separated labels</label>
+        <input id="tags" name="tags" value="{{labels}}"><button>Save labels</button>
+      </form></details>{% endif %}
+  </section>
+  {% if writes %}
+  <section class="fields">
+    {% for field, caption, action in [('assigned','Assignment','assign'),('status','Status','status')] %}
+    <form class="field" method="post" action="/conversation/{{conv.id}}/edit">{{version()}}<input type="hidden" name="action" value="{{action}}">
+      <label for="{{field}}">{{caption}}</label>
+      {% if field=='assigned' %}<select name="assigned" id="assigned"><option value="none">Unassigned</option>
+      {% if conv.assignee and conv.assignee.id!=operator_id %}<option selected disabled>{{conv.assignee.first or 'Assigned teammate'}}</option>{% endif %}
+      <option value="me" {{'selected' if conv.assignee and conv.assignee.id==operator_id else ''}}>{{agent_name}}</option></select>
+      {% else %}<select id="status" name="status">{% for s in ['active','pending','closed','spam'] %}<option value="{{s}}" {{'selected' if s==conv.status else ''}}>{{s|title}}</option>{% endfor %}</select>{% endif %}
+      <button aria-label="Save {{caption|lower}}">Save</button>
+    </form>{% endfor %}
+  </section>
+  <section><details id="snooze"><summary>{{'Snoozed until ' ~ conv.snooze.until if conv.snooze else 'Snooze conversation'}}</summary>{{start_form()}}
+    <label>Reactivate at (UTC)<input type="datetime-local" name="until" required></label>
+    <label class="check"><input type="checkbox" name="regardless" value="yes"> Keep reminder if the customer replies</label>
+    <button name="action" value="snooze">Set reminder</button>{% if conv.snooze %}<button name="action" value="unsnooze" formnovalidate>Remove snooze</button>{% endif %}</form></details>
+    {% if manual %}<details><summary>Manual workflow</summary>{{start_form()}}<label>Workflow<select name="rule">{% for r in manual %}<option value="{{r.id}}">{{r.name}}</option>{% endfor %}</select></label><button name="action" value="workflow">Run workflow</button></form></details>{% endif %}
+  </section>
+  {% else %}<section><h2>Assignment</h2><p>{{conv.assignee.first or 'Assigned' if conv.assignee else 'Unassigned'}}</p></section>{% endif %}
+  {% if has_shop %}<section><details id="account" data-id="{{conv.id}}"><summary>Shop account</summary><p role="status"></p><a href="/account/{{conv.id}}/details">Full Shop details</a></details></section>{% endif %}
+  {% if writes %}<a href="/manage/{{conv.id}}">Manage conversation →</a>{% endif %}
+{% if writes and ledger %}<form class="stack" method="post" action="/conversation/{{conv.id}}/edit"><input type="hidden" name="version" value="{{v}}"><p class="eyebrow">Agents</p>
+{% if not ledger.state.campaign %}<label for="handling">Who handles this</label><select id="handling" name="handling"><option value="agents" {{'selected' if ledger.state.handling=='agents' else ''}}>The agents</option><option value="person" {{'selected' if ledger.state.handling=='person' else ''}}>Me · agents stop</option></select>{% endif %}
+{% if ledger.state.campaign %}<label for="stage">Stage</label><select id="stage" name="stage">{% if not ledger.state.stage %}<option value="" selected>Not set</option>{% endif %}{% for key, name in ledger.stages %}<option value="{{key}}" {{'selected' if key==ledger.state.stage else ''}}>{{name|capitalize}}</option>{% endfor %}</select>
+<label for="waiting_on">Waiting on</label><select id="waiting_on" name="waiting_on">{% for key, name in [('customer','The customer'),(owner_key,'Me · ' ~ agent_name),('blocked','Blocked'),('nobody','Nobody')] %}<option value="{{key}}" {{'selected' if key==(ledger.state.waiting_on if ledger.state.waiting_on in ['customer',owner_key,'blocked'] else 'nobody') else ''}}>{{name}}</option>{% endfor %}</select>
+<label for="reminders">Reminders</label><select id="reminders" name="reminders"><option value="on" {{'selected' if ledger.state.reminders.state!='off' else ''}}>On</option><option value="off" {{'selected' if ledger.state.reminders.state=='off' else ''}}>Off</option></select>{% endif %}
+<label for="reason">Reason, for the agents (optional)</label><input id="reason" name="reason" maxlength="300"><button name="action" value="state">Apply</button></form>{% endif %}
+</aside></div>
+{% if writes and send and draft %}<dialog id="send-confirm" aria-labelledby="send-title"><h2 id="send-title">Send this draft?</h2><p></p><form method="dialog" class="actions"><button value="cancel" autofocus>Cancel</button><button class="primary" value="send">Send reply</button></form></dialog>{% endif %}
+{% endblock %}

@@ -1,0 +1,11 @@
+{% macro icon(name) -%}
+<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-{{name}}"/></svg>
+{%- endmacro %}
+{% macro key(keys, action) -%}<span><kbd>{{keys}}</kbd> {{action}}</span>{%- endmacro %}
+{% set icons = dict(active=icon('active'), closed=icon('closed'), draft=icon('draft'), pending=icon('pending'), spam=icon('spam'), later=icon('later'), message=icon('message')) %}
+{% set shortcuts %}
+<dialog id="shortcuts" aria-labelledby="shortcuts-title"><h2 id="shortcuts-title">Keyboard shortcuts</h2>
+<dl>{% for keys, action in [('j / k','Select next / previous conversation'),('Enter','Open the selection'),('/','Search conversations'),('g i / g r / g s','Go to Queue / Review / Insights'),('g h','Jump to handled activity on the review desk'),('u','Back to the list'),('a','Confirm sending the draft'),('e','Edit the draft'),('r','Write a customer reply'),('n','Write a private note'),('l','Edit labels'),('s','Set a snooze'),('?','Show shortcuts')] %}
+<dt><kbd>{{keys}}</kbd></dt><dd>{{action}}</dd>{% endfor %}</dl>
+<form method="dialog"><button>Close</button></form></dialog>
+{% endset %}

@@ -1,0 +1,43 @@
+{% from "desk_ui.html" import icon, key, shortcuts -%}
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><meta name="color-scheme" content="light dark">
+<title>{% block title %}Support inbox{% endblock %} · {{company_name}}</title>
+<link rel="stylesheet" href="{{assets.css}}"><script src="{{assets.js}}" defer></script></head>
+<body>
+<svg class="symbols" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+<symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.3"/><path d="m10 10 3.5 3.5"/></symbol>
+<symbol id="i-active" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6"/><circle cx="8" cy="8" r="1.2"/></symbol>
+<symbol id="i-closed" viewBox="0 0 16 16"><path d="m2.5 8 3.4 3.5 7.5-7"/></symbol>
+<symbol id="i-draft" viewBox="0 0 16 16"><path d="m2.5 13.5.8-3.5 7.3-7.4 2.7 2.7-7.4 7.4z"/></symbol>
+<symbol id="i-pending" viewBox="0 0 16 16"><path d="M5.5 3.5v9m5-9v9"/></symbol>
+<symbol id="i-spam" viewBox="0 0 16 16"><path d="m8 2 6 11H2zM8 6v3m0 1.8v.2"/></symbol>
+<symbol id="i-later" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.8"/><path d="M8 4.6V8l2.4 1.5"/></symbol>
+<symbol id="i-message" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7.3H7l-3 2.5v-2.5H2.5z"/></symbol>
+</defs></svg>
+<header class="topbar">
+  <a class="brand" href="/">{{company_name}} <span>/</span> Inbox</a>
+  {% if next_path is undefined %}
+  <nav class="sections" aria-label="Sections">{% for id, url, name in [('inbox','/','Queue'),('review','/review','Review'),('insights','/insights','Insights'),('investigations','/investigations','Investigations'),('triage','/triage','Intake checks')] %}
+    <a href="{{url}}"{% if section==id %} aria-current="page"{% endif %}>{{name}}</a>{% endfor %}
+  </nav>
+  <form class="search" role="search" action="/">
+    <input type="hidden" name="status" value="all">
+    <button aria-label="Search conversations">{{icon('search')}}</button>
+    <input type="search" id="search" name="q" aria-label="Search conversations" placeholder="Search tickets, people, numbers" value="{{q|default('')}}">
+    <kbd aria-hidden="true">/</kbd>
+  </form>
+  <details class="profile"><summary aria-label="Operator menu for {{agent_name}}" title="{{agent_name}}">{{agent_name[:1]|upper}}</summary>
+    <form action="/logout" method="post"><small>{{agent_name}}</small><button>Sign out</button></form>
+  </details>
+  {% endif %}
+</header>
+<main class="{% block frame %}page{% endblock %}" id="main">{% block main %}{% endblock %}</main>
+<footer class="keys">
+  {% if next_path is undefined %}
+  {% block keys %}{% endblock %}{{key('/', 'search')}}
+  <button type="button" data-help><kbd>?</kbd> all keys</button>
+  {% endif %}
+  <a href="{{source_url}}">Source code</a>
+</footer>
+{% if next_path is undefined %}{{shortcuts}}{% endif %}</body></html>

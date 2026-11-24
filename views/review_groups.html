@@ -1,0 +1,17 @@
+{% from "desk_ui.html" import icon %}
+<div class="review-groups"{% if section=='inbox' %} data-keys="rows"{% endif %}>
+  <div class="group-heading"><h2>Held for you</h2><span>{{groups.held|length}}{{'+' if groups.held_more}}</span></div>
+  {% for e in groups.held %}
+  <a class="row held-row" href="/conversation/{{e.conversation}}"{% if e.draft_id %} data-draft{% endif %}>
+    <span class="kind kind-{{'draft' if e.draft_id else 'pending'}}">{{icon('draft' if e.draft_id else 'later' if e.kind=='scheduled' else 'pending')}}</span>
+    <div class="row-main"><div class="row-title"><strong>{{e.subject or '(no subject)'}}</strong>{% for tag in e.tags[:3] %}<span class="chip">{{tag.tag}}</span>{% endfor %}</div>
+    <p class="row-detail"><em>{{e.title if e.kind=='scheduled' else (e.data.action or e.lead or e.title)}}</em>{% if e.customer %} · {{e.customer}}{% endif %}{% if e.data.confidence is number %} · {{e.data.confidence}}/10{% endif %}</p></div>
+    <div class="row-aside"><span class="number">#{{e.number}}</span><time datetime="{{e.at}}">{{e.at[:10]}}</time></div>
+  </a>{% else %}<div class="quiet"><b>{{'Nothing is held for you.' if p|default(1)==1 else 'No more held items.'}}</b>
+  <p>{{'Recorded replies and filings appear below.' if p|default(1)==1 else 'Earlier pages contain the most recent requests.'}}</p></div>{% endfor %}
+  <div class="group-heading" id="handled" tabindex="-1"><h2>Handled without you</h2><span>Today · UTC · {{groups.handled|length}}{{'+' if groups.handled_more}}</span></div>
+  {% for r in groups.handled %}<a class="row receipt" href="/conversation/{{r.conversation}}">
+    <time datetime="{{r.at}}" data-clock>{{r.at[11:16]}} UTC</time>
+    <span class="receipt-icon">{{icon(r.icon)}}</span><span class="outcome">{{r.label}}</span><strong>{{r.subject or '(no subject)'}}</strong><span class="receipt-customer">{{r.customer}}</span>
+  </a>{% else %}<div class="quiet"><p>{{'No automatic replies, filings or closes recorded today.' if p|default(1)==1 else 'No further activity on this page.'}}</p></div>{% endfor %}
+</div>

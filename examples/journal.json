@@ -1,0 +1,11 @@
+{
+  "company": "Woodland Press",
+  "id": "journal",
+  "name": "Field Journal",
+  "documents": [
+    {"key":"sync-guide","kind":"guide","title":"Sync field entries","text":"On mobile, open Settings and choose Sync now. A green check beside an entry means its latest changes are backed up.","source":"Field Journal user guide, Sync","revision":"2"},
+    {"key":"voice","kind":"voice","title":"Customer voice","text":"Use short sentences. Refer to a field entry by its name in the app.","source":"Woodland support handbook","revision":"1"},
+    {"key":"support-practice","kind":"practice","title":"Protect offline work","text":"When troubleshooting synchronization, preserve the local copy of each field entry.","source":"Woodland support handbook","revision":"3"}
+  ],
+  "repositories": []
+}

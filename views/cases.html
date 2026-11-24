@@ -1,0 +1,9 @@
+{% extends "layout.html" %}{% set section='investigations' %}{% block title %}Investigations{% endblock %}{% block main %}
+<section class="investigation"><a href="/">← Inbox</a><h1>Investigations</h1>
+{% if products %}<form method="post" class="composer"><label for="product">Product workspace</label>
+<select name="product" id="product">{% for p in products %}<option value="{{p.id}}" {{'selected' if p.id==product else ''}}>{{p.name}}</option>{% endfor %}</select>
+<label for="question">{{'Support question shared with this product’s agents' if cid else 'Support question'}}</label><textarea id="question" name="question" rows="3" required maxlength="32000">{{question}}</textarea>
+{% if cid %}<input type="hidden" name="ticket" value="{{cid}}"><input type="hidden" name="ticket_version" value="{{ticket_version}}"><p><a href="/conversation/{{cid}}">Linked conversation</a></p>{% endif %}
+<input type="hidden" name="operation" value="{{op}}"><button class="primary">Open investigation</button></form>
+{% for c in cases %}<a class="row" href="/investigations/{{product}}/{{c.id}}"><strong>{{c.question|truncate(130)}}</strong><span>{{c.state|replace('_',' ')|title}}</span></a>{% endfor %}
+{% else %}<p>Install a product pack to open the first investigation.</p>{% endif %}</section>{% endblock %}

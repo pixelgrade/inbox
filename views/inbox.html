@@ -1,0 +1,43 @@
+{% extends "layout.html" %}{% from "desk_ui.html" import icons %}{% set section='inbox' %}
+{% set names={'active':'Active','unassigned':'Unassigned','mine':'Mine','drafts':'Drafts','assigned':'Assigned','pending':'Pending','closed':'Closed','spam':'Spam','later':'Snoozed','all':'All conversations'} %}
+{% set view='Search results' if q else (folders|selectattr('id','equalto',folder)|map(attribute='name')|first|default('Folder') if folder else names[status]) %}
+{% if groups is defined and groups is not none %}{% set view='Review desk' %}{% endif %}
+{% block title %}{{view}} · Queue{% endblock %}
+{% block frame %}desk{% endblock %}
+{% block keys %}{% if groups %}{{key('g h','handled today')}}{% endif %}{% if rows or (groups and (groups.held or groups.handled)) %}{{key('j k','move')}}{{key('Enter','open')}}{% if writes %}
+  <span data-row-key="s" hidden><kbd>s</kbd> snooze</span><span data-row-key="l" hidden><kbd>l</kbd> labels</span>
+  <span data-row-key="e" hidden><kbd>e</kbd> edit draft</span>{% if send %}<span data-row-key="a" hidden><kbd>a</kbd> review send</span>{% endif %}
+  {% endif %}{% endif %}{% endblock %}
+{% macro views(statuses) %}{% for s in statuses %}<a href="/?status={{s}}"{% if not groups and s==status and not folder and not q %} aria-current="page"{% endif %}>{{names[s]}} <span>{{'{:,}'.format(counts[s]) if s in counts else ''}}</span></a>{% endfor %}{% endmacro %}
+{% block main %}
+<div class="shell">
+  <aside class="rail"><details open id="mailbox-views"><summary>Mailbox views</summary><div class="rail-content">
+    <p class="eyebrow">Mailbox</p><strong class="address">{{support_address}}</strong>
+    <nav aria-label="Queue views"><a href="/" {% if groups %}aria-current="page"{% endif %}>Review desk</a>{{views(['active','drafts','pending','later','closed','spam','all'])}}</nav>
+    <p class="eyebrow">Assignment</p><nav aria-label="Assignment">{{views(['mine','unassigned','assigned'])}}</nav>
+    {% if folders %}<p class="eyebrow">Folders</p><nav aria-label="Smart folders">{% for f in folders %}<a href="/?folder={{f.id}}&amp;status=all"{% if f.id==folder %} aria-current="page"{% endif %}>{{f.name}}</a>{% endfor %}</nav>{% endif %}
+    <div class="rail-end"><nav aria-label="Operations"><a href="/operations">Delivery issues{% if delivery_issues %}<span class="issue-count">{{delivery_issues}}</span>{% endif %}</a><a href="/triage">Intake checks</a></nav>
+    {% if writes %}<a class="button compose" href="/compose"><span aria-hidden="true">＋</span> New conversation</a>{% endif %}</div>
+  </div></details></aside>
+  <section class="queue" aria-labelledby="view-title">
+    <div class="queue-head"><div><p class="eyebrow">Conversation queue</p><h1 id="view-title">{{view}}</h1></div>
+    {% if q %}<span class="query">“{{q}}”</span>{% endif %}</div>
+    {% if groups %}{% include "review_groups.html" %}{% else %}
+    <div class="list-head"><span>Conversation</span><span>Last updated</span></div>
+    <div class="list" data-keys="rows">{% for c in rows %}
+      {% set state=c.view.state %}
+      <a class="row" href="/conversation/{{c.id}}"{% if c.view.draft %} data-draft{% endif %}>
+        <span class="kind kind-{{state}}" aria-label="{{c.view.state_label}}" role="img">{{icons.get(state, '')}}</span>
+        <div class="row-main"><div class="row-title"><strong>{{c.subject or '(no subject)'}}</strong>
+          {% for t in (c.tags or [])[:4] %}<span class="chip">{{t.tag}}</span>{% endfor %}</div>
+          <p class="row-detail"><span>{{c.view.name or c.primaryCustomer.email or 'Unknown sender'}}</span>
+            {% if c.view.draft %} · <em>Draft ready</em>{% endif %}{% if c.view.waiting %} · Waiting {{c.view.waiting}}{% endif %}{% if c.preview %} · {{c.view.preview}}{% endif %}</p></div>
+        <div class="row-aside"><span class="number">#{{c.number}}</span>{% if c.threads and c.threads>1 %}<span class="messages" title="{{c.threads}} messages">{{icons.message}} {{c.threads}}</span>{% endif %}
+          <time datetime="{{c.view.when}}">{{c.view.when[:10]}}</time></div>
+      </a>
+    {% else %}<div class="empty">{{icon('search' if q else 'closed')}}<h2>{{'No matching conversations' if q else 'No conversations in this view'}}</h2><p>{{'Try another name, ticket number or phrase.' if q else 'You can find earlier conversations in the full mailbox.'}}</p><a href="/?status=all">View all conversations</a></div>{% endfor %}</div>
+    {% endif %}
+    {% if groups and (groups.more or p>1) %}<nav class="pagination" aria-label="Pages">{% if p>1 %}<a href="/?p={{p-1}}">← Previous</a>{% endif %}<span>Page {{p}}</span>{% if groups.more %}<a href="/?p={{p+1}}">More records →</a>{% endif %}</nav>
+    {% elif p>1 or more %}<nav class="pagination" aria-label="Pages">{% if p>1 %}<a href="{{previous}}">← Previous</a>{% endif %}<span>Page {{p}}</span>{% if more %}<a href="{{more}}">Next conversations →</a>{% endif %}</nav>{% endif %}
+  </section>
+</div>{% endblock %}

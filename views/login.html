@@ -1,0 +1,26 @@
+{% extends "layout.html" %}
+{% block main %}
+<section class="sign">
+  <h1>Sign in to your inbox</h1>
+  {% if password_enabled %}
+  <form method="post" action="/session/password">
+    <input type="hidden" name="next" value="{{next_path}}">
+    <label for="email">Email address</label>
+    <input id="email" name="email" type="email" autocomplete="username" maxlength="254" value="{{email|default('')}}" required>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" maxlength="1024" required>
+    {% if error %}<p role="alert">{{error}}</p>{% endif %}
+    <button class="primary">Sign in</button>
+  </form>
+  <details><summary>Use an owner recovery code</summary>
+  {% endif %}
+  <p>Run <code>{{login_command}}</code> in your operator terminal to get a one-time sign-in code.</p>
+  <form id="login" method="post" action="/session">
+    <label for="code">Sign-in code</label>
+    <input id="code" type="password" name="code" autocomplete="one-time-code" required>
+    <input type="hidden" name="next" value="{{next_path}}">
+    <button class="primary">Sign in with code</button>
+  </form>
+  {% if password_enabled %}</details>{% endif %}
+</section>
+{% endblock %}

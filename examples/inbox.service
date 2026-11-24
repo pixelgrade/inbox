@@ -1,0 +1,19 @@
+[Unit]
+Description=Support inbox
+After=network.target
+
+[Service]
+User=inbox
+Group=inbox
+WorkingDirectory=/srv/inbox
+EnvironmentFile=/etc/inbox/mailbox.env
+ExecStart=/srv/inbox/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8926
+Restart=on-failure
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+StateDirectory=inbox
+
+[Install]
+WantedBy=multi-user.target
