@@ -4,12 +4,21 @@ from importlib import import_module
 import os
 
 
+_loaded = {}
+
+
+def loaded():
+    """A snapshot of successful extension imports in this interpreter."""
+    return list(_loaded)
+
+
 def load():
     # Python caches successful imports, including modules shared by several entry points.
     for name in os.environ.get("INBOX_EXTENSIONS", "").split(","):
         name = name.strip()
-        if name:
+        if name and name not in _loaded:
             try:
                 import_module(name)
+                _loaded[name] = True
             except Exception as exc:
                 raise RuntimeError(f"Could not load inbox extension {name!r}") from exc

@@ -22,6 +22,7 @@ from urllib.parse import urlsplit
 
 import store
 import company
+import extensions
 import provider_feedback
 import inbound_queue
 import intake_triage
@@ -865,7 +866,24 @@ def receive(db, s3, bucket, prefix, active, sqs=None, queue=None):
             inbound_queue.retry_receipts(db, s3, bucket, cutoff)
 
 
+def notify_ready():
+    """Publish this worker's completed startup to its service manager, when present."""
+    address = os.getenv("NOTIFY_SOCKET")
+    if not address:
+        return
+    import socket
+    status = json.dumps({
+        "pid": os.getpid(), "invocation": os.getenv("INVOCATION_ID"), "extensions": extensions.loaded(),
+    })
+    # Linux represents an abstract Unix socket address with a leading NUL.
+    if address.startswith("@"):
+        address = "\0" + address[1:]
+    with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as notification:
+        notification.sendto(("READY=1\nSTATUS=" + status).encode(), address)
+
+
 def main():
+    extensions.load()
     import boto3
     from botocore.config import Config
 
@@ -896,6 +914,7 @@ def main():
             if args.worker in ("feedback", "inbound")
             else None
         )
+        notify_ready()
         while True:
             if args.worker == "feedback":
                 provider_feedback.poll(
@@ -937,6 +956,4 @@ def main():
 
 
 if __name__ == "__main__":
-    import extensions
-    extensions.load()
     main()

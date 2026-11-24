@@ -2,6 +2,8 @@
 
 import os
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import closing
@@ -62,6 +64,22 @@ class QueryIndexTests(unittest.TestCase):
             },
         ).json()["access_token"]
         self.client.headers["Authorization"] = "Bearer " + token
+
+    def test_index_command_loads_configured_extensions(self):
+        directory = Path(self.scratch.name)
+        marker = directory / "loaded"
+        (directory / "fixture_index_extension.py").write_text(
+            "from pathlib import Path\nPath(__file__).with_name('loaded').touch()\n"
+        )
+        env = dict(os.environ, PYTHONPATH=str(directory), INBOX_EXTENSIONS="fixture_index_extension")
+        command = [sys.executable, "store.py", "indexes"]
+        cwd = Path(__file__).resolve().parent
+        subprocess.run(command, cwd=cwd, env=env, check=True, capture_output=True)
+        self.assertTrue(marker.exists())
+        env["INBOX_EXTENSIONS"] = "missing_index_extension"
+        result = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("missing_index_extension", result.stderr)
 
     def add(self, cid, **fields):
         with store.transaction(self.db):

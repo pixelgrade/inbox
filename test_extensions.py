@@ -61,3 +61,47 @@ def test_default_mailbox_and_source_offer():
                  "    assert b'https://source.example/inbox' in ui.page(template, **args).body",
                  INBOX_SOURCE_URL="https://source.example/inbox")
     assert result.returncode == 0, result.stderr
+
+
+def test_health_reports_only_completed_imports(tmp_path):
+    (tmp_path / "example_installation.py").write_text("registered = True\n")
+    result = run("""
+import os
+from fastapi.testclient import TestClient
+from app import app
+os.environ['INBOX_EXTENSIONS'] = 'changed_after_start'
+with TestClient(app) as client:
+    health = client.get('/health').json()
+assert health == {'status': 'ok', 'pid': os.getpid(), 'extensions': ['example_installation']}, health
+""", INBOX_EXTENSIONS="example_installation", INBOX_DB=str(tmp_path / "mail.db"), PYTHONPATH=str(tmp_path))
+    assert result.returncode == 0, result.stderr
+
+
+def test_worker_announces_its_loaded_modules(tmp_path):
+    import json
+    import socket
+    import tempfile
+
+    # A short path fits Unix socket addresses on both Linux and macOS.
+    with tempfile.TemporaryDirectory(dir="/tmp") as runtime, socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as receiver:
+        address = str(Path(runtime) / "notify")
+        receiver.bind(address)
+        receiver.settimeout(5)
+        (tmp_path / "fixture_extension.py").write_text("installed = True\n")
+        env = {k: v for k, v in os.environ.items() if not k.startswith("INBOX_")}
+        worker = subprocess.Popen(
+            [sys.executable, "transport.py", "workflows"], cwd=Path(__file__).resolve().parent,
+            env={**env, "INBOX_EXTENSIONS": "fixture_extension", "PYTHONPATH": str(tmp_path),
+                 "NOTIFY_SOCKET": address, "INVOCATION_ID": "fixture-invocation",
+                 "INBOX_DB": str(tmp_path / "mail.db")}, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        try:
+            fields = dict(line.split("=", 1) for line in receiver.recv(8192).decode().splitlines())
+            assert fields["READY"] == "1"
+            assert json.loads(fields["STATUS"]) == {
+                "pid": worker.pid, "invocation": "fixture-invocation", "extensions": ["fixture_extension"],
+            }
+            assert worker.poll() is None
+        finally:
+            worker.terminate()
+            worker.communicate(timeout=5)
