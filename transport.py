@@ -497,12 +497,15 @@ def admit(
                     else []
                 )
                 # A message a person released by hand is support by their decision.
+                # Mail its sender marks as automatic is read by the check as well: without a verdict
+                # it stayed open with the agents off, for a person to close by hand.
                 verdict = None
-                if not auto and not is_report and decision is None and intake_triage.mode() != "off":
+                if not is_report and decision is None and intake_triage.mode() != "off":
                     verdict = triage_verdict(db, msg, subject, thread["text"], author, refs)
                 acting = verdict is not None and intake_triage.mode() == "act"
                 filed = acting and intake_triage.acts(verdict)
-                suspect = acting and verdict["category"] == "wrong_address"
+                # Mail the receiver itself treats as automatic is never answered as a wrong address.
+                suspect = acting and not auto and verdict["category"] == "wrong_address"
                 unacknowledged = suspect and intake_triage.holds_acknowledgment(verdict)
                 if filed:
                     # Confident machine mail is kept, closed and out of the agents' queue.

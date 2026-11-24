@@ -72,7 +72,9 @@ from app import app
 os.environ['INBOX_EXTENSIONS'] = 'changed_after_start'
 with TestClient(app) as client:
     health = client.get('/health').json()
+    proxied = client.get('/health', headers={'X-Forwarded-For': '203.0.113.9'}).json()
 assert health == {'status': 'ok', 'pid': os.getpid(), 'extensions': ['example_installation']}, health
+assert proxied == {'status': 'ok'}, proxied
 """, INBOX_EXTENSIONS="example_installation", INBOX_DB=str(tmp_path / "mail.db"), PYTHONPATH=str(tmp_path))
     assert result.returncode == 0, result.stderr
 

@@ -681,7 +681,7 @@ async def edit(request:Request,cid:int):
                     value=str(form.get(field,"")).strip()
                     known=(current["reminders"]["state"] if field=="reminders" else
                            (current["waiting_on"] if current["waiting_on"] in agent_ledger.SETTABLE_WAITING else "nobody") if field=="waiting_on" else current.get(field) or "")
-                    if value and value!=known and not (field=="reminders" and known=="idle" and value=="on"):
+                    if value and value!=known and not (field=="reminders" and known=="idle" and value=="on") and not (field=="handling" and value=="nobody"):
                         changes[field]=value
                 if changes.get("stage") in agent_ledger.ENDED:
                     # Closing a case from the page: its waiting state and reminders go with it.

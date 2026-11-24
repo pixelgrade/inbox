@@ -113,9 +113,13 @@ def session(write=False, *, require_writer=False):
 
 
 @app.get("/health")
-def health():
+def health(request: Request):
     with session() as db:
         db.execute("SELECT 1 FROM conversations LIMIT 1").fetchone()
+    # The process and its installed modules are the host's business: a request that came through
+    # the reverse proxy (which always adds this header) learns only that the mailbox answers.
+    if "x-forwarded-for" in request.headers:
+        return {"status": "ok"}
     return {"status": "ok", "pid": os.getpid(), "extensions": extensions.loaded()}
 
 

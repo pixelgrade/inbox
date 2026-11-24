@@ -48,7 +48,7 @@ RECENT_DAYS = 14  # An absorbed request or booking older than this is history, n
 # How the intake check and triage file a conversation, by tag.
 CLASSES = {"marketing": "marketing", "spammy": "marketing", "promotion": "marketing", "admin": "admin",
            "spam": "spam", "site-mail": "site mail", "delivery-report": "delivery report",
-           "auto-reply": "automatic reply", "wrong-address": "wrong address"}
+           "auto-reply": "automatic reply", "wrong-address": "wrong address", "non-support": "not support"}
 
 # What an installation adds (see `register_campaign`, `register_note_reader`, `configure`). A mailbox
 # with nothing registered has no campaigns: who handles a conversation, requests, booked sends and
@@ -431,6 +431,14 @@ def campaign_state(named):
             **flags}
 
 
+def taken_over(db, cid):
+    """Whether the latest recorded change of who handles this conversation gave it to a person."""
+    row = db.execute(
+        "SELECT json_extract(data,'$.changes.handling') FROM agent_events WHERE conversation=? AND kind IN ('control','state') "
+        "AND json_extract(data,'$.changes.handling') IS NOT NULL ORDER BY at DESC,id DESC LIMIT 1", (cid,)).fetchone()
+    return bool(row) and row[0] == "person"
+
+
 def state(db, cid, conv=None, now=None):
     """The conversation's state as agents and people need it, read from tags, events and threads."""
     conv = conv or store.conversation(db, cid)
@@ -472,7 +480,10 @@ def state(db, cid, conv=None, now=None):
     return {
         # A campaign conversation may carry the hand-off tag throughout: the general agents stay off it
         # and the campaign's own agents work it. There the tag says nothing about who is in charge.
-        "handling": "campaign" if campaign["campaign"] else "person" if company.IGNORE_TAG in named else "agents",
+        # The same tag on mail that was classified as not support (by the intake check, the receiver
+        # or triage) only keeps the agents off it: nobody took it over and nobody needs to.
+        "handling": ("campaign" if campaign["campaign"] else "agents" if company.IGNORE_TAG not in named
+                     else "nobody" if any(t in named for t in CLASSES) and not taken_over(db, cid) else "person"),
         "status": status,
         "waiting_on": campaign["waiting"],
         "campaign": campaign["campaign"],
@@ -592,9 +603,14 @@ def change_state(db, cid, changes, actor, reason="", owner=False):
         put(f"{campaign}-no-reminders", changes["reminders"] == "off")
         done.append("reminders " + changes["reminders"])
     tags = list(named.values())
-    if sorted(t.lower() for t in tags) != sorted(t.lower() for t in current):
-        store.update_conversation(db, cid, {"tags": [{"tag": t} for t in tags]})
-        store.emit(db, cid, "convo.tags")
+    retagged = sorted(t.lower() for t in tags) != sorted(t.lower() for t in current)
+    # Taking over mail that was only filed changes no tag, but it is a decision and is recorded as one.
+    claimed = (not retagged and changes.get("handling") == "person" and not campaign
+               and any(t in named for t in CLASSES) and not taken_over(db, cid))
+    if retagged or claimed:
+        if retagged:
+            store.update_conversation(db, cid, {"tags": [{"tag": t} for t in tags]})
+            store.emit(db, cid, "convo.tags")
         summary = ", ".join(done)
         record(db, cid, {"kind": "control" if owner else "state", "actor": actor,
                          "title": summary[:1].upper() + summary[1:],
@@ -687,7 +703,7 @@ def present(item):
 def chips(found):
     """The state of a conversation as short labels, most important first: (text, kind)."""
     out = [{"person": ("You handle this · agents stopped", "warn"), "agents": ("Agents handle this", ""),
-            "campaign": ("Campaign agents work this", "")}[found["handling"]]]
+            "campaign": ("Campaign agents work this", ""), "nobody": ("Not support · agents stay off", "")}[found["handling"]]]
     if found["requests"]:
         out.append(("Asks something of you", "warn"))
     for send in found["scheduled"]:

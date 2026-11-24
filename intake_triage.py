@@ -156,9 +156,9 @@ def assess(msg, subject, body, author, *, own_domains=(), vocabulary=(), answere
         note("bounce", 2, "subject reads as a delivery failure")
     auto = first(msg, "Auto-Submitted").strip().lower()
     if auto and auto != "no":
-        note("auto_reply", 4, f"Auto-Submitted: {auto[:40]}")
+        note("auto_reply", 4, f"Auto-Submitted: {auto[:40]}", "declared")
     if names & {"x-autoreply", "x-autorespond", "x-autoresponder"} or first(msg, "Precedence").strip().lower() == "auto_reply":
-        note("auto_reply", 4, "marked as an automatic reply")
+        note("auto_reply", 4, "marked as an automatic reply", "declared")
     if AUTO_SUBJECT.search(subject or ""):
         note("auto_reply", 2, "subject reads as an automatic reply")
 
@@ -249,8 +249,19 @@ def assess(msg, subject, body, author, *, own_domains=(), vocabulary=(), answere
         confidence = "high" if points >= bar else "medium" if points >= bar - 1 else "low"
         # What a message says is never enough to file it: the sending side has to agree.
         # Someone we answered before, or who replies to our mail, is only ever flagged.
-        corroborated = category in ("bounce", "auto_reply") or len(kinds[category]) >= 2
-        if confidence == "high" and (not corroborated or answered_before or replies_to_us):
+        # The sender's own header says no person wrote this (Auto-Submitted, X-Autoreply), and the
+        # sending system is a bulk-mail service or a website: two statements from the sending side.
+        declared = "declared" in kinds["auto_reply"]
+        machine_sender = declared and ("sender" in kinds["promotion"] or "sender" in kinds["site_mail"])
+        corroborated = category in ("bounce", "auto_reply") or len(kinds[category]) >= 2 or machine_sender
+        # Help desks and forwarding rules put the automatic header on mail a person wrote, so the
+        # header alone never files mail that reads as an exchange with us.
+        personal = bool(product) or bool(REPLY_SUBJECT.search(subject or ""))
+        if confidence == "high" and (
+                not corroborated or replies_to_us
+                # Someone we answered before is only flagged, unless a bulk or site system sent it as automatic mail.
+                or (answered_before and not machine_sender)
+                or (category == "auto_reply" and not machine_sender and (personal or ours))):
             confidence = "medium"
     return {"category": category, "confidence": confidence, "score": points, "reasons": reasons[category],
             "evidence": evidence(names, mailer, links, images, product)}
@@ -345,8 +356,11 @@ def judge(db, msg, subject, body, author, refs):
                 "AND coalesce(json_extract(data,'$.state'),'published')='published' LIMIT 1", (cid,),
             ).fetchone():
                 answered = 1
+    # A reference to mail that was itself filed as not support (the earlier issue of a newsletter,
+    # the previous notification in a thread) is no exchange with us.
     replies = bool(refs) and db.execute(
-        "SELECT 1 FROM json_each(?) ref JOIN mail_ids m ON m.mid=ref.value LIMIT 1",
+        "SELECT 1 FROM json_each(?) ref JOIN mail_ids m ON m.mid=ref.value JOIN conversations c ON c.id=m.conversation "
+        "WHERE NOT EXISTS(SELECT 1 FROM json_each(c.data,'$.tags') t WHERE json_extract(t.value,'$.tag')='non-support') LIMIT 1",
         (json.dumps(list(refs)),),
     ).fetchone() is not None
     words = WORD.findall(os.environ.get("INBOX_PRODUCT_WORDS", "").casefold()) + WORD.findall(company.NAME.casefold())

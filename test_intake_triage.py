@@ -178,6 +178,104 @@ def test_bounces_and_automatic_replies():
     away = verdict(mail("<i@example.org>", subject="Automatic reply: Your website", text="I am away until Monday.",
                         X_Autoreply="yes"))
     assert away["category"] == "auto_reply" and intake_triage.acts(away)
+    # The automatic header alone files mail from a stranger that reads as nothing personal...
+    notice = mail("<i2@example.org>", author="system@registrar.example", subject="Scheduled maintenance", text="Our systems will be down on Sunday.",
+                  Auto_Submitted="auto-generated")
+    assert intake_triage.acts(verdict(notice))
+    # ...but help desks and forwarding rules stamp it on mail a person wrote: never from someone we answered,
+    # never when it names our products or answers a subject, never from our own domain, never as a reply to us.
+    assert not intake_triage.acts(verdict(notice, answered_before=True, contacts_before=4))
+    assert not intake_triage.acts(verdict(notice, replies_to_us=True))
+    for author, subject, text in (("agent@helpdesk.example", "Another problem with Maple", "The header still overlaps the logo after the update."),
+                                  ("agent@helpdesk.example", "Re: [#4411] Your request", "Could you look at this again, please?"),
+                                  ("billing@woodland.example", "Monthly statement", "The statement is attached.")):
+        stamped = verdict(mail("<i3@example.org>", author=author, subject=subject, text=text, Auto_Submitted="auto-generated"))
+        assert stamped["category"] == "auto_reply" and not intake_triage.acts(stamped), (author, subject)
+    for header in ({"Auto_Submitted": "auto-replied"}, {"X_Autoreply": "yes"}):  # The same caution for every such header.
+        assert not intake_triage.acts(verdict(mail("<i4@example.org>", text="I am away until Monday.", **header), answered_before=True))
+    # When a bulk-mail service or a website sent it AND marks it automatic, two statements of the sending side
+    # agree: filed even from an address we answered years ago, whichever category scores highest.
+    blast = mail("<i5@example.org>", author="info@studio.example", subject="Our winter offers on Maple themes", text="New arrivals this week.",
+                 Auto_Submitted="auto-generated", X_CSA_Complaints="csa@example.org")
+    seen = verdict(blast, answered_before=True, contacts_before=9)
+    assert seen["category"] == "auto_reply" and intake_triage.acts(seen)
+    loud = verdict(mail("<i6@example.org>", author="info@studio.example", subject="Sale", text="Savings. Click here to unsubscribe. View this email in your browser.",
+                        Auto_Submitted="auto-generated", X_Mailgun_Sid="1", X_Campaign="bf"), answered_before=True)
+    assert loud["category"] == "promotion" and intake_triage.acts(loud)
+    form = verdict(mail("<i7@example.org>", author="shop@shop.example", subject="Order received", text="A new order was placed.",
+                        Auto_Submitted="auto-generated", X_PHP_Originating_Script="1:mail.php", X_Mailer="PHPMailer 6"))
+    assert form["category"] == "site_mail" and intake_triage.acts(form)
+    # The same site headers without the automatic header are one kind of evidence only: flagged, as before.
+    assert not intake_triage.acts(verdict(mail("<i7b@example.org>", author="shop@shop.example", subject="Order received", text="A new order was placed.",
+                                               X_PHP_Originating_Script="1:mail.php", X_Mailer="PHPMailer 6")))
+    away_blast = verdict(mail("<i7c@example.org>", author="info@studio.example", subject="Our winter offers", text="New arrivals.",
+                              X_Autoreply="yes", X_CSA_Complaints="csa@example.org"), answered_before=True)
+    assert intake_triage.acts(away_blast)  # Any header that declares the mail automatic counts the same.
+    assert not intake_triage.acts(verdict(blast, answered_before=True, replies_to_us=True))  # Still never an answer to our own mail.
+    # Without the automatic header a bulk header from someone we answered stays a flag, as before.
+    quiet = verdict(mail("<i8@example.org>", author="info@studio.example", subject="Sale", text="Savings. Click here to unsubscribe.",
+                         X_Mailgun_Sid="1", X_Campaign="bf"), answered_before=True)
+    assert quiet["category"] == "promotion" and not intake_triage.acts(quiet)
+    worded = verdict(mail("<i9@example.org>", subject="Automatic reply: Your website", text="I am away until Monday."))
+    assert worded["category"] == "auto_reply" and not intake_triage.acts(worded)  # Wording alone never files.
+
+
+def test_mail_marked_automatic_is_read_by_the_check_and_filed_not_left_open(tmp_path, monkeypatch):
+    db = db_at(tmp_path, monkeypatch)
+    monkeypatch.setenv("INBOX_TRIAGE_MODE", "act")
+    real = mail("<u0@example.org>", author="info@studio.example", subject="Maple license", text="My Maple theme license will not activate.")
+    assert transport.admit(db, "raw/first", real, verify=lambda *_: True) == "imported"
+    first = db.execute("SELECT conversation FROM intake_triage WHERE object_key='raw/first'").fetchone()[0]
+    with store.transaction(db):
+        answered = store.append_thread(db, first, "reply", {"text": "<p>Fixed.</p>", "imported": True}, imported=True)
+        db.execute("INSERT OR IGNORE INTO mail_ids VALUES(?,?,?)", ("<ours@woodland.example>", first, answered))
+    acknowledged = db.execute("SELECT count(*) FROM acknowledgments").fetchone()[0]
+    # The same address later sends a bulk message its own system marks as automatic: filed, closed, not acknowledged.
+    blast = mail("<u1@example.org>", author="info@studio.example", subject="Our winter offers", text="New arrivals this week.",
+                 Auto_Submitted="auto-generated", X_CSA_Complaints="csa@example.org", X_Mailer="MailUp")
+    assert transport.admit(db, "raw/blast", blast, verify=lambda *_: True) == "imported"
+    cid, filed, category = db.execute("SELECT conversation,filed,category FROM intake_triage WHERE object_key='raw/blast'").fetchone()
+    conv = store.conversation(db, cid)
+    assert (filed, category, conv["status"], [t["tag"] for t in conv["tags"]]) == (1, "auto_reply", "closed", ["agent-ignore", "non-support", "auto-reply"])
+    assert cid != first and store.conversation(db, first)["status"] != "closed"
+    # An automatic answer to mail we sent stays open, off the agents, with its verdict on record.
+    away = mail("<u2@example.org>", author="info@studio.example", subject="Automatic reply: Maple license", text="I am away until Monday.",
+                Auto_Submitted="auto-replied", In_Reply_To="<ours@woodland.example>")
+    assert transport.admit(db, "raw/away", away, verify=lambda *_: True) == "imported"
+    cid, filed = db.execute("SELECT conversation,filed FROM intake_triage WHERE object_key='raw/away'").fetchone()
+    conv = store.conversation(db, cid)
+    assert (filed, conv["status"], [t["tag"] for t in conv["tags"]]) == (0, "active", ["agent-ignore", "auto-reply"])
+    # The next issue of that newsletter references the filed one: still filed, that is no exchange with us.
+    issue = mail("<u5@example.org>", author="info@studio.example", subject="Our spring offers", text="More arrivals.",
+                 Auto_Submitted="auto-generated", X_CSA_Complaints="csa@example.org", References="<u1@example.org>")
+    assert transport.admit(db, "raw/issue", issue, verify=lambda *_: True) == "imported"
+    assert db.execute("SELECT filed FROM intake_triage WHERE object_key='raw/issue'").fetchone()[0] == 1
+    # The same customer's help desk stamps a person's new message as automatic: open, agents off, nothing closed unseen.
+    human = mail("<u6@example.org>", author="info@studio.example", subject="Another problem with Maple", text="The header still overlaps the logo.",
+                 Auto_Submitted="auto-generated")
+    assert transport.admit(db, "raw/human", human, verify=lambda *_: True) == "imported"
+    cid, filed = db.execute("SELECT conversation,filed FROM intake_triage WHERE object_key='raw/human'").fetchone()
+    conv = store.conversation(db, cid)
+    assert (filed, conv["status"], [t["tag"] for t in conv["tags"]]) == (0, "active", ["agent-ignore", "auto-reply"])
+    # An empty automatic header is still automatic for the receiver: never tagged for the wrong-address reply.
+    empty = mail("<u7@example.org>", author="guest@elsewhere.example", Auto_Submitted="")
+    assert transport.admit(db, "raw/empty", empty, verify=lambda *_: True) == "imported"
+    conv = store.conversation(db, db.execute("SELECT conversation FROM inbound_objects WHERE object_key='raw/empty'").fetchone()[0])
+    assert "possible-wrong-address" not in [t["tag"] for t in conv["tags"]] and "agent-ignore" in [t["tag"] for t in conv["tags"]]
+    # A delivery report keeps its own path, and nothing automatic is ever acknowledged.
+    assert db.execute("SELECT count(*) FROM acknowledgments").fetchone()[0] == acknowledged
+    # With the check switched off the receiver behaves as before: tagged, open, no verdict.
+    monkeypatch.setenv("INBOX_TRIAGE_MODE", "off")
+    assert transport.admit(db, "raw/off", mail("<u3@example.org>", author="x@other.example", Auto_Submitted="auto-generated"), verify=lambda *_: True) == "imported"
+    cid = db.execute("SELECT conversation FROM inbound_objects WHERE object_key='raw/off'").fetchone()[0]
+    conv = store.conversation(db, cid)
+    assert (conv["status"], [t["tag"] for t in conv["tags"]]) == ("active", ["agent-ignore", "auto-reply"])
+    assert not db.execute("SELECT 1 FROM intake_triage WHERE object_key='raw/off'").fetchone()
+    # And in observe mode it records what it would do and files nothing.
+    monkeypatch.setenv("INBOX_TRIAGE_MODE", "observe")
+    assert transport.admit(db, "raw/seen", mail("<u4@example.org>", author="y@other.example", Auto_Submitted="auto-generated"), verify=lambda *_: True) == "imported"
+    cid, filed, category = db.execute("SELECT conversation,filed,category FROM intake_triage WHERE object_key='raw/seen'").fetchone()
+    assert (filed, category, store.conversation(db, cid)["status"]) == (0, "auto_reply", "active")
 
 
 def test_a_person_writing_to_the_wrong_business_is_flagged_never_filed():

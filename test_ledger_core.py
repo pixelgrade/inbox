@@ -117,6 +117,51 @@ class Core(unittest.TestCase):
         self.assertEqual(agent_ledger.present({"actor": "owner", "kind": "note", "status": "", "data": {}})["who"], "Sam")
         self.assertEqual(agent_ledger.present({"actor": "agent-7", "kind": "note", "status": "", "data": {}})["who"], "agent-7")
 
+    def test_mail_filed_as_not_support_is_nobody_s_until_someone_takes_it(self):
+        with store.transaction(self.db):
+            store.update_conversation(self.db, 9, {"tags": [{"tag": company.IGNORE_TAG}, {"tag": "auto-reply"}]})
+        state = agent_ledger.state(self.db, 9)
+        # The tag that keeps the agents off automatic or filed mail is not a person taking it over.
+        self.assertEqual((state["handling"], state["classification"], agent_ledger.chips(state)[0]),
+                         ("nobody", "automatic reply", ("Not support · agents stay off", "")))
+        page = self.client.get("/conversation/9").text
+        self.assertIn('<option value="nobody" selected>Nobody · not support</option>', page)
+        self.assertNotIn("You handle this", page)
+        # Saving the form as shown changes nothing: the agents are not switched on by accident.
+        version = page.split('name="version" value="')[1].split('"')[0]
+        same = self.client.post("/conversation/9/edit", data={"version": version, "action": "state", "handling": "nobody"},
+                                headers=self.origin, follow_redirects=False)
+        self.assertEqual((same.status_code, self.tags(9), agent_ledger.events(self.db, 9)), (303, sorted(["auto-reply", company.IGNORE_TAG]), []))
+        # Taking over a conversation that carries no class is the tag itself; nothing extra is recorded for it.
+        with store.transaction(self.db):
+            store.update_conversation(self.db, 7, {"tags": [{"tag": company.IGNORE_TAG}]})
+        self.assertEqual(self.change(7, {"handling": "person"}, "agent-7")["handling"], "person")
+        self.assertEqual(agent_ledger.events(self.db, 7), [])
+        for tags in (("non-support", "promotion"), ("non-support",), ("spam",)):
+            with store.transaction(self.db):
+                store.update_conversation(self.db, 9, {"tags": [{"tag": t} for t in (company.IGNORE_TAG, *tags)]})
+            self.assertEqual(agent_ledger.state(self.db, 9)["handling"], "nobody", tags)
+        self.assertNotIn('value="nobody"', self.client.get("/conversation/7").text)
+        # Someone who takes it over explicitly does handle it, classified or not; handing it back ends that.
+        taken = self.change(9, {"handling": "person"}, agent_ledger.OWNER, owner=True, reason="This one is a customer.")
+        self.assertEqual((taken["handling"], self.tags(9), agent_ledger.events(self.db, 9)[0]["title"]),
+                         ("person", sorted(["spam", company.IGNORE_TAG]), "Handled by a person"))
+        count = len(agent_ledger.events(self.db, 9))
+        self.change(9, {"handling": "person"}, agent_ledger.OWNER, owner=True)  # Already theirs: nothing more to record.
+        self.assertEqual(len(agent_ledger.events(self.db, 9)), count)
+        # A page loaded before the take-over still posts "nobody": that is no change, not an error.
+        stale = self.client.post("/conversation/9/edit", data={"version": self.client.get("/conversation/9").text.split('name="version" value="')[1].split('"')[0],
+                                                              "action": "state", "handling": "nobody"}, headers=self.origin, follow_redirects=False)
+        self.assertEqual((stale.status_code, len(agent_ledger.events(self.db, 9)), agent_ledger.state(self.db, 9)["handling"]), (303, count, "person"))
+        self.assertEqual(self.change(9, {"handling": "agents"}, agent_ledger.OWNER, owner=True)["handling"], "agents")
+        self.assertEqual(self.tags(9), ["spam"])
+        self.assertEqual(self.change(9, {"handling": "person"}, "agent-7", reason="Looks like a customer.")["handling"], "person")
+        self.assertEqual(self.tags(9), sorted(["spam", company.IGNORE_TAG]))
+        self.assertEqual(self.change(9, {"handling": "agents"}, agent_ledger.OWNER, owner=True)["handling"], "agents")
+        with store.transaction(self.db):  # Tagged again later by the receiver or triage, not by a person.
+            store.update_conversation(self.db, 9, {"tags": [{"tag": "spam"}, {"tag": company.IGNORE_TAG}]})
+        self.assertEqual(agent_ledger.state(self.db, 9)["handling"], "nobody")
+
     def test_a_registered_campaign_keeps_its_tags_in_step(self):
         trial()
         agent_ledger.configure(owner_aliases=("Sam",), flags={"paid": {"tag": "invoice-paid", "chip": "Paid"}},
